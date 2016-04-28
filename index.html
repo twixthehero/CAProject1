@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>Project 1 - Maximilian Wright</title>
+    <meta charset="utf-8" />
+
+    <style>
+
+    body { margin: 0; padding: 0; }
+
+    </style>
+</head>
+
+<body>
+
+<script src="js/three.min.js"></script>
+<script src="js/OrbitControls.js"></script>
+<script src="js/dat.gui.min.js"></script>
+<script>
+
+(function()
+{
+"use strict";
+
+var NUMCELLS = 10;
+var MIN = -5;
+var MAX = 5;
+var UPDATES_PER_SECOND = 3;
+var UPDATE_PERIOD = 1000 / UPDATES_PER_SECOND;
+
+var cells = [];
+var tmpcells = [];
+var numAlive = 0;
+var paused = false;
+var updateTimer = 0;
+var updateTimeout;
+var dt;
+var lastTime = Date.now();
+
+var scene, camera, renderer, controls, gui;
+var contPause;
+
+var geometry = new THREE.BoxGeometry(1, 1, 1);
+var mat_dead = new THREE.MeshBasicMaterial({color: 0xffffff, wireframe: false});
+var mat_alive = new THREE.MeshBasicMaterial({color: 0x0096ff, wireframe: true});
+var cube = new THREE.Mesh(geometry, mat_alive);
+var test = new THREE.Mesh(geometry, mat_alive);
+
+function init()
+{
+    scene = new THREE.Scene();
+    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    renderer = new THREE.WebGLRenderer();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.target = new THREE.Vector3(NUMCELLS / 2, 0, NUMCELLS / 2);
+    controls.enablePan = false;
+
+    //scene.add(test);
+
+    gui = new dat.GUI();
+
+    let params =
+    {
+        a: 3, //updates per second
+        b: false, //alive wireframe
+        c: false, //dead wireframe
+        d: "#0096FF", //alive color
+        e: "#FFFFFF", //dead color
+        f: randomize, //randomize board
+        g: pause,
+        h: 10, //num cells
+        i: 5, //max height
+        j: -5, //min height
+
+    };
+    var contNum = gui.add(params, 'h').min(5).max(30).step(1).name("Number of Cells");
+    var contUpdate = gui.add(params, 'a').min(1).max(10).step(1).name("Updates/Second");
+    var contMax = gui.add(params, 'i').min(1).max(15).step(1).name("Max Height");
+    var contMin = gui.add(params, 'j').min(-15).max(-1).step(1).name("Min Height");
+    var contAliveWire = gui.add(params, 'b').name("Alive Wireframe");
+    var contDeadWire = gui.add(params, 'c').name("Dead Wireframe");
+    var contAliveColor = gui.addColor(params, 'd').name("Alive Color");
+    var contDeadColor = gui.addColor(params, 'e').name("Dead Color");
+    gui.add(params, 'f').name("Randomize");
+    contPause = gui.add(params, 'g').name("Pause");
+
+    contNum.onChange(function(value)
+    {
+        if (!paused)
+            pause();
+
+        clear();
+        NUMCELLS = value;
+        reset();
+    });
+    contUpdate.onChange(function(value)
+    {
+        UPDATES_PER_SECOND = value;
+        UPDATE_PERIOD = 1000 / UPDATES_PER_SECOND;
+    });
+    contMax.onChange(function(value)
+    {
+        MAX = value;
+    });
+    contMin.onChange(function(value)
+    {
+        MIN = value;
+    });
+    contAliveWire.onChange(function(value)
+    {
+        mat_alive.wireframe = value;
+    });
+    contAliveWire.setValue(true);
+    contDeadWire.onChange(function(value)
+    {
+        mat_dead.wireframe = value;
+    });
+    contAliveColor.onChange(function(value)
+    {
+        mat_alive.color.setHex(value.replace("#", "0x"));
+    });
+    contDeadColor.onChange(function(value)
+    {
+        mat_dead.color.setHex(value.replace("#", "0x"));
+    });
+
+    gui.open();
+
+    for (var i = 0; i < NUMCELLS; i++)
+    {
+        cells[i] = [];
+        tmpcells[i] = [];
+
+        for (var k = 0; k < NUMCELLS; k++)
+        {
+            let alv = Math.random() < 0.3;
+
+            if (alv)
+                numAlive += 1;
+
+            cells[i][k] = { obj: cube.clone(), alive: alv, num: alv ? 1 : 0 };
+            tmpcells[i][k] = alv;
+
+            cells[i][k].obj.position.set(i, 0, k);
+
+            if (cells[i][k].alive)
+                cells[i][k].obj.material = mat_alive;
+
+            scene.add(cells[i][k].obj);
+        }
+    }
+
+    camera.position.set(-NUMCELLS / 2, 10, NUMCELLS / 2);
+
+    document.body.appendChild(renderer.domElement);
+}
+
+function randomize()
+{
+    numAlive = 0;
+
+    for (var i = 0; i < NUMCELLS; i++)
+    {
+        for (var k = 0; k < NUMCELLS; k++)
+        {
+            let alv = Math.random() < 0.3;
+
+            if (alv)
+                numAlive += 1;
+
+            cells[i][k].alive = alv;
+            cells[i][k].num = 0;
+            cells[i][k].obj.material = cells[i][k].alive ? mat_alive : mat_dead;
+            cells[i][k].obj.position.y = cells[i][k].num / 2;
+        }
+    }
+}
+
+function pause()
+{
+    paused = !paused;
+
+    if (paused)
+    {
+        contPause.name("Play");
+        clearTimeout(updateTimeout);
+    }
+    else
+        contPause.name("Pause");
+}
+
+function clear()
+{
+    for (var i = 0; i < NUMCELLS; i++)
+        for (var k = 0; k < NUMCELLS; k++)
+            scene.remove(cells[i][k].obj);
+}
+
+function reset()
+{
+    numAlive = 0;
+
+    for (var i = 0; i < NUMCELLS; i++)
+    {
+        cells[i] = [];
+        tmpcells[i] = [];
+
+        for (var k = 0; k < NUMCELLS; k++)
+        {
+            let alv = Math.random() < 0.3;
+
+            if (alv)
+                numAlive += 1;
+
+            cells[i][k] = { obj: cube.clone(), alive: alv, num: alv ? 1 : 0 };
+            tmpcells[i][k] = alv;
+
+            cells[i][k].obj.position.set(i, 0, k);
+
+            if (cells[i][k].alive)
+                cells[i][k].obj.material = mat_alive;
+
+            scene.add(cells[i][k].obj);
+        }
+    }
+
+    controls.target = new THREE.Vector3(NUMCELLS / 2, 0, NUMCELLS / 2);
+    camera.position.set(-NUMCELLS / 2, 10, NUMCELLS / 2);
+}
+
+function updateCells()
+{
+    numAlive = 0;
+
+    for (var r = 0; r < NUMCELLS; r++)
+    {
+        for (var c = 0; c < NUMCELLS; c++)
+        {
+            var neighbors = getNumNeighbors(r, c);
+            var alive = cells[r][c].alive;
+
+            if (!alive && neighbors == 3)
+            {
+                tmpcells[r][c] = true;
+                numAlive += 1;
+            }
+            else if (alive && neighbors > 3)
+                tmpcells[r][c] = false;
+            else if (alive && neighbors < 2)
+                tmpcells[r][c] = false;
+            else if (alive)
+            {
+                tmpcells[r][c] = true;
+                numAlive += 1;
+            }
+            else
+                tmpcells[r][c] = false;
+        }
+    }
+
+    //transfer tmp to real array
+    for (var i = 0; i < NUMCELLS; i++)
+    {
+        for (var k = 0; k < NUMCELLS; k++)
+        {
+            cells[i][k].alive = tmpcells[i][k];
+            cells[i][k].num += tmpcells[i][k] ? 1 : -1;
+
+            if (cells[i][k].num < MIN) cells[i][k].num = MIN;
+            if (cells[i][k].num > MAX) cells[i][k].num = MAX;
+
+            //cells[i][k].obj.geometry = new THREE.BoxGeometry(1, cells[i][k].num, 1);
+            cells[i][k].obj.material = cells[i][k].alive ? mat_alive : mat_dead;
+            cells[i][k].obj.position.y = cells[i][k].num / 2;
+        }
+    }
+}
+
+function getNumNeighbors(r, c)
+{
+    var neighbors = 0;
+
+    for (var x = -1; x <= 1; x++)
+    {
+        for (var y = -1; y <= 1; y++)
+        {
+            if (x == 0 && y == 0) continue;
+
+            if (cells[(r + y + NUMCELLS) % NUMCELLS][(c + x + NUMCELLS) % NUMCELLS].alive == 1)
+                neighbors++;
+        }
+    }
+
+    return neighbors;
+}
+
+function update()
+{
+    controls.update();
+}
+
+function render()
+{
+    requestAnimationFrame(render);
+
+    dt = Date.now() - lastTime;
+    lastTime = Date.now();
+    updateTimer += dt;
+
+    if (!paused && numAlive > 0)
+        if (updateTimer >= UPDATE_PERIOD)
+        {
+            updateTimeout = setTimeout(updateCells, 0);
+            updateTimer = 0;
+        }
+
+    update();
+    renderer.render(scene, camera);
+}
+
+init();
+render();
+
+})();
+
+</script>
+
+</body>
+
+</html>
