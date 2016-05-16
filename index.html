@@ -73,6 +73,10 @@ function init()
         h: 10, //num cells
         i: 5, //max height
         j: -5, //min height
+        k: function()
+        {
+            window.open("docs.html");
+        }
 
     };
     var contNum = gui.add(params, 'h').min(5).max(30).step(1).name("Number of Cells");
@@ -85,6 +89,7 @@ function init()
     var contDeadColor = gui.addColor(params, 'e').name("Dead Color");
     gui.add(params, 'f').name("Randomize");
     contPause = gui.add(params, 'g').name("Pause");
+    gui.add(params, "k");
 
     contNum.onChange(function(value)
     {
